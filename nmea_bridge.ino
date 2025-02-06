@@ -94,6 +94,12 @@ uint32_t baudrate_options[BAUDRATE_OPTION_COUNT + 1] = {
 **
 ** Source:
 ** https://github.com/esp8266/Arduino/blob/master/doc/reference.rst#serial
+**
+** ESP01:
+**
+** #define SERIAL_RX   Serial
+** #define SERIAL_TX   Serial
+** #define SERIAL_SAME 1
 */
 
 // The serial device on which this device receives NMEA sentences.
