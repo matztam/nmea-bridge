@@ -225,6 +225,11 @@ DNSServer           dns_server;
 #define MAX_TCP_CLIENTS 4
 WiFiServer *tcp_server;
 WiFiClient tcpClients[MAX_TCP_CLIENTS];
+
+// Buffers for incoming  tcp data
+char tcp_buffers[MAX_TCP_CLIENTS][NMEA_SENTENCE_BUFFER_SIZE + 1];
+uint8_t tcp_buffer_filled[MAX_TCP_CLIENTS] = {0};  
+
 // -----------------------------------------------
 
 // cache static files "forever" (about a year)
@@ -443,6 +448,9 @@ void loop() {
     handle_udp_event();
     yield();
 
+    handle_tcp_event();
+    yield();
+
     http_server.handleClient();
     yield();
 
@@ -558,6 +566,28 @@ void handle_udp_event() {
         }
     }
 }
+
+void handle_tcp_event() {
+  for (int i = 0; i < MAX_TCP_CLIENTS; i++) {
+    if (tcpClients[i] && tcpClients[i].connected() && tcpClients[i].available() > 0) {
+      while (tcpClients[i].available()) {
+        int byteReceived = tcpClients[i].read();
+        if (byteReceived < 0) break;  // Should not happen, but for safety
+        char ch = (char)byteReceived;
+        tcp_buffers[i][tcp_buffer_filled[i]] = ch;
+        tcp_buffer_filled[i]++;
+        if (ch == '\n' || tcp_buffer_filled[i] >= NMEA_SENTENCE_BUFFER_SIZE) {
+          // Null-terminate (if not already present)
+          tcp_buffers[i][tcp_buffer_filled[i]] = '\0';
+          handle_incoming_sentence(tcp_buffers[i], tcp_buffer_filled[i], "tcp");
+          // Reset the buffer for this client
+          tcp_buffer_filled[i] = 0;
+        }
+      }
+    }
+  }
+}
+
 
 #ifdef ENABLE_WEBSOCKET_LOG
     void handle_websocket_event(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
