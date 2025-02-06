@@ -30,8 +30,6 @@ extern "C" {
 
 #define min(x, y) ((x < y) ? x : y)
 
-
-
 // hardware layout
 
 #define CONFIG_EEPROM_ADDRESS   100
@@ -46,6 +44,7 @@ extern "C" {
 
 #define RESET_CONFIG_THRESHOLD  5000  // in milliseconds
 
+#define WIFI_CONNECTION_TIMEOUT 10000
 
 
 // configuration
@@ -170,7 +169,6 @@ struct Configuration default_config = {
     1,
 };
 
-
 // global values
 
 #define HTTP_PORT       80
@@ -237,8 +235,6 @@ WiFiClient tcpClients[MAX_TCP_CLIENTS];
         http_server.send(200, content_type, content); \
     }
 
-
-
 // forward declarations
 
 void send_info_page_response();
@@ -273,8 +269,6 @@ void load_config_from_eeprom(Configuration &new_config);
 void store_config_to_eeprom(Configuration new_config);
 void fix_config();
 
-
-
 #include "html_fragments.cpp"  // TODO inherit WEBSOCKET_PORT
 #include "css_fragments.cpp"
 #include "js_fragments.cpp"
@@ -284,8 +278,6 @@ extern const String html_end;
 extern const String html_log_content;
 extern const String css_style;
 extern const String js_log_script;
-
-
 
 /**********************
 **  MAIN EVENT LOOP  **
@@ -497,8 +489,6 @@ void loop() {
     return;
 }
 
-
-
 /*********************
 **  EVENT HANDLERS  **
 *********************/
@@ -580,7 +570,6 @@ void handle_udp_event() {
     }
 #endif
 
-
 void handle_incoming_sentence(char *sentence, size_t length, char *source) {
     /* data is sent into the nmea device
     **   sentence: always includes the newline and must be newline terminted
@@ -608,7 +597,6 @@ void handle_outgoing_sentence(char *sentence, size_t length) {
 
     nmea_sentences_received ++;
 }
-
 
 void transmit_incoming_over_serial(char *sentence, size_t length) {
     SERIAL_TX.write(sentence, length);
@@ -671,7 +659,6 @@ void transmit_outgoing_over_tcp(char *sentence, size_t length) {
 /******************************
 **  HTTP RESPONSE CALLBACKS  **
 ******************************/
-
 bool isThisHost(String host) {
     String ip = get_device_ip_address().toString();
     String name = String(config.mdns_hostname) + ".local";
@@ -692,7 +679,6 @@ bool captive_portal() {
   }
   return false;
 }
-
 
 void clear_http_response_buffer() {
     http_response_buffer_filled = 0;
@@ -751,7 +737,6 @@ void send_http_response_buffer() {
     clear_http_response_buffer();
 }
 
-
 const String html_link(String url, String text) {
     return String("<a href=\"") + url + String("\">") + text + String("</a>");
 }
@@ -771,7 +756,6 @@ void write_info_html_field(const char *name, String value) {
 void write_info_html_section_end() {
     write_to_http_response_buffer("</table>");
 }
-
 
 void send_info_page_response() {
     /* Request handler for the info page.
@@ -875,7 +859,6 @@ void send_info_page_response() {
     write_to_http_response_buffer(html_end);
     send_http_response_buffer();
 }
-
 
 void write_form_html_field_start(const char *title, const char *tag) {
     write_to_http_response_buffer("<");
@@ -1047,7 +1030,6 @@ void send_config_form_response() {
     write_to_http_response_buffer(html_end);
 
     send_http_response_buffer();
-
 }
 
 void send_config_form_post_response() {
@@ -1218,7 +1200,6 @@ void send_config_form_post_response() {
     http_server.send(302, "text/plain", "");
 }
 
-
 void nmea_log_page_response() {
     /* Request handler for the NMEA log page.
     */
@@ -1229,13 +1210,11 @@ void nmea_log_page_response() {
     send_http_response_buffer();
 }
 
-
 void send_js_log_script()
     STATIC_FILE_REQUEST_HANDLER(JS_CONTENT_TYPE, js_log_script);
 
 void send_css_style_response()
     STATIC_FILE_REQUEST_HANDLER(CSS_CONTENT_TYPE, css_style);
-
 
 void send_404_not_found_response() {
     /* Request handler for undefined urls.
@@ -1249,8 +1228,6 @@ void send_404_not_found_response() {
     body += html_end;
     http_server.send(404, "text/html", body);
 }
-
-
 
 /******************************
 **  EEPROM SETTINGS STORAGE  **
@@ -1333,8 +1310,6 @@ void fix_config() {
     }
 }
 
-
-
 /************************
 **  UTILITY FUNCTIONS  **
 ************************/
@@ -1350,6 +1325,7 @@ void update_mdns_hostname() {
 //    MDNS.begin(config.mdns_hostname);
 //    MDNS.notifyAPChange();
 }
+
 void update_tx_config() {
     /* Update the network transmit state,
     ** used then the config has changed.
@@ -1399,7 +1375,6 @@ void update_rx_baudrate() {
     SERIAL_RX.begin(baudrate_options[config.rx_baudrate]);
 }
 
-
 IPAddress get_device_ip_address() {
     /* Get the ip address of this device.
     */
@@ -1423,7 +1398,6 @@ IPAddress subnet_address(IPAddress addr) {
     */
     return IPAddress(255, 255, 255, 0);
 }
-
 
 unsigned long get_uptime_in_seconds() {
     /* Get the current uptime in seconds.
@@ -1457,7 +1431,6 @@ String get_uptime_display() {
         return String(days) + " days, " + String(uptime_buffer);
     }
 }
-
 
 void set_indicator_led_on() {
     /* Set the indicator led on,
@@ -1552,13 +1525,38 @@ bool blink_while_pressing_mode_button() {
 }
 
 void blink_while_connecting_wifi() {
-    /* Return when wifi is connected.
+    /* Adjusted function: Tries to establish a WiFi connection in Station mode.
+    ** If no connection is made within WIFI_CONNECTION_TIMEOUT (10 s), the attempt is aborted
+    ** and it switches to Access-Point mode (with default configuration).
     */
+
+    unsigned long startTime = millis();
     while (WiFi.status() != WL_CONNECTED) {
-        toggle_indicator_led();
-        delay(500);
-        DEBUG_PRINT(".");
+         toggle_indicator_led();
+         delay(500);
+         if (millis() - startTime >= WIFI_CONNECTION_TIMEOUT) {
+              DEBUG_PRINTLN("WiFi connection timeout. Falling back to default AP mode.");
+              // Switch to AP mode with default configuration:
+              effective_wifi_mode = WifiMode::access_point;
+              inConfigMode = true;
+              WiFi.disconnect();
+              WiFi.mode(WIFI_AP);
+              strlcpy(effective_wifi_ssid, default_config.wifi_ssid, MAX_WIFI_SSID_SIZE);
+              WiFi.softAPConfig(
+                 (default_config.static_ip_address.isSet() ?
+                     default_config.static_ip_address : WIFI_ACCESS_POINT_DEVICE_IP),
+                 WIFI_ACCESS_POINT_GATEWAY_IP,
+                 WIFI_ACCESS_POINT_SUBNET_IP);
+              WiFi.softAP(effective_wifi_ssid, default_config.wifi_password, WIFI_ACCESS_POINT_CHANNEL, WIFI_ACCESS_POINT_MAX_CONNECTIONS);
+              delay(500);
+              dns_server.setErrorReplyCode(DNSReplyCode::NoError);
+              dns_server.start(DNS_PORT, "*", WiFi.softAPIP());
+              DEBUG_PRINTLN("Fallback AP mode activated.");
+              return;
+         }
     }
-    set_indicator_led_on();
-    DEBUG_PRINTLN("");
+    if (WiFi.status() == WL_CONNECTED) {
+         set_indicator_led_on();
+         DEBUG_PRINTLN("WiFi connected.");
+    }
 }
