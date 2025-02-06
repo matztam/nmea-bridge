@@ -50,7 +50,7 @@ extern "C" {
 // configuration
 
 #define MAX_WIFI_SSID_SIZE      33
-#define MAX_WIFI_PASSWORD_SIZE  33
+#define MAX_WIFI_PASSWORD_SIZE  63
 #define MAX_MDNS_HOSTNAME_SIZE  33
 
 #define ENABLE_WEBSOCKET_LOG
