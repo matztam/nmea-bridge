@@ -105,8 +105,10 @@ uint32_t baudrate_options[BAUDRATE_OPTION_COUNT + 1] = {
 // Set to 1 if the RX and TX serial ports are the same one.
 #define SERIAL_SAME 0  // TODO automatic
 
+#define CONFIG_MAGIC 0xDEADBEEF
 
 struct Configuration {
+    uint32_t magic;
     WifiMode wifi_mode;
     char wifi_ssid[MAX_WIFI_SSID_SIZE];
     char wifi_password[MAX_WIFI_PASSWORD_SIZE];
@@ -139,6 +141,8 @@ const char* display_tx_mode(TransmitMode mode) {
 }
 
 struct Configuration default_config = {
+    // magic number
+    CONFIG_MAGIC,             
     // wifi_mode
     WifiMode::access_point,
     // wifi_ssid
@@ -659,7 +663,7 @@ void write_to_http_response_buffer(const char *data) {
     // Add one for the zero byte at the end.
     remaining += 1;
     size_t result = strlcpy(buffer_start, data, remaining);
-    http_response_buffer_filled += min(result, remaining - 1);;
+    http_response_buffer_filled += min(result, remaining - 1);
     if (result >= remaining) {
         DEBUG_PRINTLN("response buffer overflow");
     }
@@ -684,7 +688,7 @@ void write_format_to_http_response_buffer(char *format, ...) {
     size_t result = vsnprintf(buffer_start, remaining, format, args);
     va_end(args);
 
-    http_response_buffer_filled += min(result, remaining - 1);;
+    http_response_buffer_filled += min(result, remaining - 1);
     if (result >= HTTP_RESPONSE_BUFFER_REMAINING + 1) {
         DEBUG_PRINTLN("response buffer overflow\n");
     }
@@ -1200,6 +1204,11 @@ void load_config_from_eeprom(Configuration &new_config) {
     ** The config is written to the passed instance.
     */
     EEPROM.get(CONFIG_EEPROM_ADDRESS, new_config);
+    if (new_config.magic != CONFIG_MAGIC) {
+        // EEPROM data is invalid, using default_config
+        new_config = default_config;
+        store_config_to_eeprom(new_config);
+    }
 }
 
 void store_config_to_eeprom(Configuration new_config) {
