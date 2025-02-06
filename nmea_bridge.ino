@@ -96,7 +96,8 @@ uint32_t baudrate_options[BAUDRATE_OPTION_COUNT + 1] = {
 ** https://github.com/esp8266/Arduino/blob/master/doc/reference.rst#serial
 **
 ** ESP01:
-**
+** #define INDICATOR_LED_ON        0
+** #define INDICATOR_LED_OFF       1
 ** #define SERIAL_RX   Serial
 ** #define SERIAL_TX   Serial
 ** #define SERIAL_SAME 1
