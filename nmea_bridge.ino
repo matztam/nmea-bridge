@@ -7,11 +7,14 @@
 #include <WebSocketsServer.h>
 #include <DNSServer.h>
 
+//#define ENABLE_VOLTAGE
+
+#ifdef ENABLE_VOLTAGE
 extern "C" {
     #include "user_interface.h"
     uint16 readvdd33(void);
 }
-
+#endif
 
 
 // global macros utils
@@ -45,7 +48,6 @@ extern "C" {
 #define RESET_CONFIG_THRESHOLD  5000  // in milliseconds
 
 #define WIFI_CONNECTION_TIMEOUT 10000
-
 
 // configuration
 
@@ -845,9 +847,11 @@ void send_info_page_response() {
     write_info_html_field(
         "TX Counter",
         String(nmea_sentences_sent));
+#ifdef ENABLE_VOLTAGE
     write_info_html_field(
         "Voltage",
         String(readvdd33() / 1000.0, 2) + String("V"));
+#endif
     write_info_html_field(
         "Uptime",
         get_uptime_display());
