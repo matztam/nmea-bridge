@@ -118,6 +118,7 @@ struct Configuration {
     IPAddress tx_address;
     uint16_t tx_port;
     uint16_t rx_port;
+    uint16_t tcp_tx_port;
     uint8_t tx_baudrate;
     uint8_t rx_baudrate;
 } config;
@@ -161,6 +162,8 @@ struct Configuration default_config = {
     10110,
     // rx_port
     10110,
+    // tcp_tx_port
+    10111,
     // tx_baudrate (4800)
     1,
     // rx_baudrate (4800)
@@ -211,7 +214,11 @@ DNSServer           dns_server;
     WebSocketsServer    websocket_server(WEBSOCKET_PORT);
 #endif
 
-
+// --- TCP server for NMEA data ---
+#define MAX_TCP_CLIENTS 4
+WiFiServer *tcp_server;
+WiFiClient tcpClients[MAX_TCP_CLIENTS];
+// -----------------------------------------------
 
 // cache static files "forever" (about a year)
 #define STATIC_FILE_CACHE_TIME  31536000  // in seconds
@@ -403,6 +410,13 @@ void setup() {
         websocket_server.onEvent(handle_websocket_event);
     #endif
 
+    // --- Start the TCP server for NMEA data ---
+    tcp_server = new WiFiServer(config.tcp_tx_port);
+    tcp_server->begin();
+    DEBUG_PRINT("TCP NMEA server started on port ");
+    DEBUG_PRINTLN(config.tcp_tx_port);
+    // ----------------------------------------------
+
     // determine transmit address
     update_tx_config();
 
@@ -441,6 +455,33 @@ void loop() {
 
     dns_server.processNextRequest();
     yield();
+
+    // Check and maintain the TCP connections
+    // (accept new clients and remove inactive clients)
+    {
+        WiFiClient newClient = tcp_server->available();
+        if (newClient) {
+            bool slotFound = false;
+            for (int i = 0; i < MAX_TCP_CLIENTS; i++) {
+                if (!tcpClients[i] || !tcpClients[i].connected()) {
+                    tcpClients[i] = newClient;
+                    slotFound = true;
+                    DEBUG_PRINTLN("New TCP client connected");
+                    break;
+                }
+            }
+            if (!slotFound) {
+                newClient.stop();
+                DEBUG_PRINTLN("TCP client rejected: no free slot");
+            }
+        }
+        for (int i = 0; i < MAX_TCP_CLIENTS; i++) {
+            if (tcpClients[i] && !tcpClients[i].connected()) {
+                tcpClients[i].stop();
+                tcpClients[i] = WiFiClient();
+            }
+        }
+    }
 
     // use indicator led to show connection status
     if (effective_wifi_mode == WifiMode::access_point) {
@@ -563,6 +604,8 @@ void handle_outgoing_sentence(char *sentence, size_t length) {
         transmit_outgoing_over_websocket(sentence, length);
     #endif
 
+    transmit_outgoing_over_tcp(sentence, length);
+
     nmea_sentences_received ++;
 }
 
@@ -616,7 +659,14 @@ void transmit_outgoing_over_udp(char *sentence, size_t length) {
     }
 #endif
 
-
+// New function: Send NMEA data over TCP to all connected clients
+void transmit_outgoing_over_tcp(char *sentence, size_t length) {
+    for (int i = 0; i < MAX_TCP_CLIENTS; i++) {
+         if (tcpClients[i] && tcpClients[i].connected()) {
+              tcpClients[i].write(sentence, length);
+         }
+    }
+}
 
 /******************************
 **  HTTP RESPONSE CALLBACKS  **
@@ -784,6 +834,11 @@ void send_info_page_response() {
     write_info_html_field(
         "Receive",
         html_link(rx_addr, rx_addr));
+
+    write_info_html_field(
+        "TCP Port",
+        String(config.tcp_tx_port));
+        
     write_info_html_section_end();
 
     write_info_html_section_start("Device");
@@ -970,6 +1025,8 @@ void send_config_form_response() {
     write_form_html_field("text", "7", ip_address_form_value(config.tx_address), "UDP Transmit Address", "In broadcast mode, only the global broadcast address is used.<br>In unicast mode, this must be a valid unicast address.", "");
     write_form_html_field("number", "8", String(config.tx_port), "UDP Transmit Port", "", " min=\"1\" max=\"65535\" required");
     write_form_html_field("number", "9", String(config.rx_port), "UDP Receive Port", "", " min=\"1\" max=\"65535\" required");
+    write_form_html_field("number", "10", String(config.tcp_tx_port), "TCP Transmit Port", "", " min=\"1\" max=\"65535\" required");
+
 
     write_form_html_heading("Device");
     #if SERIAL_SAME
